@@ -10,9 +10,9 @@ func lwp_mcontext_init(mc *mcontextt, stk unsafe.Pointer, mp *m, gp *g, fn uintp
 	// Machine dependent mcontext initialisation for LWP.
 	mc.__gregs[_REG_ELR] = uint64(funcPC(lwp_tramp))
 	mc.__gregs[_REG_X31] = uint64(uintptr(stk))
-	mc.__gregs[_REG_X0] = uint64(uintptr(unsafe.Pointer(mp)))
-	mc.__gregs[_REG_X1] = uint64(uintptr(unsafe.Pointer(mp.g0)))
-	mc.__gregs[_REG_X2] = uint64(fn)
+	mc.__gregs[_REG_X2] = uint64(uintptr(unsafe.Pointer(mp)))
+	mc.__gregs[_REG_X3] = uint64(uintptr(unsafe.Pointer(gp)))
+	mc.__gregs[_REG_X4] = uint64(fn)
 }
 
 //go:nosplit

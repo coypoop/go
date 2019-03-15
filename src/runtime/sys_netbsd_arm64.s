@@ -8,6 +8,7 @@
 
 #include "go_asm.h"
 #include "go_tls.h"
+#include "tls_arm64.h"
 #include "textflag.h"
 
 #define	CLOCK_REALTIME		0
@@ -34,6 +35,7 @@
 #define	SYS__lwp_create			309
 #define	SYS__lwp_exit			310
 #define	SYS__lwp_self			311
+#define	SYS__lwp_setprivate		317
 #define	SYS__lwp_kill			318
 #define	SYS__lwp_unpark			321
 #define	SYS___sigaction_sigtramp	340
@@ -58,16 +60,20 @@ ok:
 	MOVW	R0, ret+24(FP)
 	RET
 
-TEXT runtime·lwp_tramp(SB),NOSPLIT,$0
-	CMP	$0, R1
-	BEQ	nog
-	CMP	$0, R2
-	BEQ	nog
 
-	MOVD	R0, g_m(R1)
-	MOVD	R1, g
-nog:
-	CALL	(R2)
+TEXT runtime·lwp_tramp(SB),NOSPLIT,$0
+
+	// Set tpidr_el0 to point at m->tls
+	MOVD	m_tls(R8), R0
+	BL	runtime·settls(SB)
+
+	MRS_TPIDR_R0	// get_tls
+	MOVD	R2, g_m(R9)
+	MOVD	R3, g(R0)
+	//CALL	runtime·stackcheck(SB)
+
+	// Call fn
+	CALL	(R12)
 
 	MOVD	$0, R0  // crash (not reached)
 	MOVD	R0, (R8)
@@ -342,6 +348,15 @@ TEXT runtime·sigaltstack(SB),NOSPLIT,$-8
 fail:
 	MOVD	$0, R0
 	MOVD	R0, (R0)		// crash
+
+// set TLS base to R0
+TEXT runtime·settls(SB),NOSPLIT,$8
+	SVC	$SYS__lwp_setprivate
+	BCS	fail
+	RET
+fail:
+	MOVD	$0, R0
+	MOVD	R0, (R0)
 
 TEXT runtime·sysctl(SB),NOSPLIT,$0
 	MOVD	mib+0(FP), R0		// arg 1 - name

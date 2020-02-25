@@ -169,11 +169,12 @@ pipeok:
 
 // func pipe2(flags int32) (r, w int32, errno int32)
 TEXT runtime·pipe2(SB),NOSPLIT|NOFRAME,$0-20
-	ADD	$8, RSP, R0
+	ADD	$16, RSP, R0
 	MOVW	flags+0(FP), R1
 	SVC	$SYS_pipe2
-	BCC	2(PC)
+	BCC	ok
 	NEG	R0, R0
+ok:
 	MOVW	R0, errno+16(FP)
 	RET
 
@@ -306,65 +307,29 @@ TEXT runtime·sigfwd(SB),NOSPLIT,$0-32
 	BL	(R11)
 	RET
 
-TEXT runtime·sigtramp(SB),NOSPLIT,$192
-	// Save callee-save registers in the case of signal forwarding.
-	// Please refer to https://golang.org/issue/31827 .
-	MOVD	R19, 8*4(RSP)
-	MOVD	R20, 8*5(RSP)
-	MOVD	R21, 8*6(RSP)
-	MOVD	R22, 8*7(RSP)
-	MOVD	R23, 8*8(RSP)
-	MOVD	R24, 8*9(RSP)
-	MOVD	R25, 8*10(RSP)
-	MOVD	R26, 8*11(RSP)
-	MOVD	R27, 8*12(RSP)
-	MOVD	g, 8*13(RSP)
-	MOVD	R29, 8*14(RSP)
-	FMOVD	F8, 8*15(RSP)
-	FMOVD	F9, 8*16(RSP)
-	FMOVD	F10, 8*17(RSP)
-	FMOVD	F11, 8*18(RSP)
-	FMOVD	F12, 8*19(RSP)
-	FMOVD	F13, 8*20(RSP)
-	FMOVD	F14, 8*21(RSP)
-	FMOVD	F15, 8*22(RSP)
-
-	// this might be called in external code context,
-	// where g is not set.
-	// first save R0, because runtime·load_g will clobber it
-	MOVD	R0, 8(RSP)		// signum
-	MOVB	runtime·iscgo(SB), R0
-	CMP 	$0, R0
-	// XXX branch destination
-	BEQ	2(PC)
-	BL	runtime·load_g(SB)
-
+TEXT runtime·cgoSigtramp(SB),NOSPLIT,$192
+	MOVD	R0, 8(RSP)
 	MOVD	R1, 16(RSP)
 	MOVD	R2, 24(RSP)
+	BL	runtime·load_g(SB)
+	BL	runtime·sigtrampgo(SB)
+	MOVD	24(RSP), R0
+	SVC	$SYS_setcontext
+
+TEXT runtime·sigtramp(SB),NOSPLIT,$192
+	// NetBSD/arm64 signal delivery clobbers g
+	// Recover it from ucontext
+	MOVD	288(R2), g
+
+	MOVD	R0, 8(RSP)
+	MOVD	R1, 16(RSP)
+	MOVD	R2, 24(RSP)
+
 	BL	runtime·sigtrampgo(SB)
 
-	// Restore callee-save registers.
-	MOVD	8*4(RSP), R19
-	MOVD	8*5(RSP), R20
-	MOVD	8*6(RSP), R21
-	MOVD	8*7(RSP), R22
-	MOVD	8*8(RSP), R23
-	MOVD	8*9(RSP), R24
-	MOVD	8*10(RSP), R25
-	MOVD	8*11(RSP), R26
-	MOVD	8*12(RSP), R27
-	MOVD	8*13(RSP), g
-	MOVD	8*14(RSP), R29
-	FMOVD	8*15(RSP), F8
-	FMOVD	8*16(RSP), F9
-	FMOVD	8*17(RSP), F10
-	FMOVD	8*18(RSP), F11
-	FMOVD	8*19(RSP), F12
-	FMOVD	8*20(RSP), F13
-	FMOVD	8*21(RSP), F14
-	FMOVD	8*22(RSP), F15
-
-	RET
+	// Restore using ucontext.
+	MOVD	24(RSP), R0
+	SVC	$SYS_setcontext
 
 TEXT runtime·mmap(SB),NOSPLIT,$0
 	MOVD	addr+0(FP), R0		// arg 1 - addr
@@ -431,10 +396,9 @@ ok:
 
 // int32 runtime·kqueue(void)
 TEXT runtime·kqueue(SB),NOSPLIT,$0
-	MOVD	$0, R0
 	SVC	$SYS_kqueue
 	BCC	ok
-	NEG	R0, R0
+	MOVW	$-1, R0
 ok:
 	MOVW	R0, ret+0(FP)
 	RET
@@ -466,10 +430,8 @@ TEXT runtime·closeonexec(SB),NOSPLIT,$0
 TEXT runtime·setNonblock(SB),NOSPLIT|NOFRAME,$0-4
 	MOVW	fd+0(FP), R0		// arg 1 - fd
 	MOVD	$F_GETFL, R1		// arg 2 - cmd
-	MOVD	$0, R2			// arg 3
 	SVC	$SYS_fcntl
-	MOVD	$O_NONBLOCK, R2
-	EOR	R0, R2			// arg 3 - flags
+	ORR	$O_NONBLOCK, R0, R2	// arg 3 - flags | O_NONBLOCK
 	MOVW	fd+0(FP), R0		// arg 1 - fd
 	MOVD	$F_SETFL, R1		// arg 2 - cmd
 	SVC	$SYS_fcntl

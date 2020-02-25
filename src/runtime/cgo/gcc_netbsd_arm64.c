@@ -13,6 +13,9 @@ static void *threadentry(void*);
 
 static void (*setg_gcc)(void*);
 
+extern void crosscall1(void (*fn)(void), void (*setg_gcc)(void*), void *g);
+
+
 void
 x_cgo_init(G *g, void (*setg)(void*))
 {

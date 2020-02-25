@@ -314,6 +314,10 @@ TEXT runtime·sigfwd(SB),NOSPLIT,$0-32
 	POPQ	BP
 	RET
 
+TEXT runtime·cgoSigtramp(SB),NOSPLIT,$0
+	CALL	runtime·sigtramp(SB)
+	RET
+
 TEXT runtime·sigtramp(SB),NOSPLIT,$72
 	// Save callee-saved C registers, since the caller may be a C signal handler.
 	MOVQ	BX,  bx-8(SP)
